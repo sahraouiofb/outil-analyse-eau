@@ -630,7 +630,7 @@
             const dateCol = findColumn(['date de l\'observation', 'date'], headers);
             const latCol = findColumn(['latitude'], headers);
             const lonCol = findColumn(['longitude'], headers);
-            const codeStationCol = findColumn(['code station', 'code_station'], headers);
+            const codeStationCol = findColumn(['code station', 'code_station', 'code station (hydro)', 'codestation(hydro)', 'codestationhydro'], headers);
 
             if (stationCol === -1 || modalityCol === -1 || dateCol === -1) {
                 throw new Error('Colonnes requises manquantes : Station, Modalité, Date.');
