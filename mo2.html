@@ -363,7 +363,7 @@
                     <li><strong>Importation de Données</strong> :
                         <ul>
                             <li>Chargez un fichier Excel (.xlsx) via le bouton "📁 Charger".</li>
-                            <li>Colonnes requises : "Station d'écoulement" (nom de la station), "Modalité d'écoulement" (ex. : "assec"), "Date de la campagne" (format date).</li>
+                            <li>Colonnes requises : "Station d'ecoulement" (nom de la station), "Modalité d'ecoulement" (ex. : "assec"), "Date de la campagne" (format date).</li>
                             <li>Colonnes optionnelles : "Latitude" et "Longitude" (pour la carte, en coordonnées EPSG:2154 converties automatiquement en WGS84).</li>
                             <li>L'outil ignore les lignes avec modalités vides, "inconnu" ou "non observable".</li>
                         </ul>
@@ -513,15 +513,14 @@
         let charts = {};
         let comparePreviousYear = false;
         let includeWeather = true;
-        // MODIFICATION ICI : La variable 'includeHubEau' est maintenant initialisée à true
         let includeHubEau = true;
         let stationCoordinates = {};
         let map = null;
         let projections = [];
         let heatLayer;
         let sensitiveMode = false;
-        let hubEauDebits = {}; // New: Store Hub'Eau data
-        let stationHubCodes = {}; // New: Mapping station names to Hub'Eau codes
+        let hubEauDebits = {};
+        let stationHubCodes = {};
 
         const trendConfig = {
             criticalThreshold: 40,
@@ -536,7 +535,7 @@
             },
             lowFlowThreshold: 50,
             degradedModalities: ['assec', 'ecoulement non visible', 'ecoulement visible faible'],
-            debitThreshold: 0.1 // New: Threshold for low debit (m³/s)
+            debitThreshold: 0.1
         };
 
         const modalityColors = {
@@ -546,6 +545,23 @@
             'ecoulement visible acceptable': 'green',
             'non observable': 'gray'
         };
+
+        async function fetchViaProxy(url) {
+            try {
+                const response = await fetch(`/proxy?url=${encodeURIComponent(url)}`, {
+                    headers: {
+                        // Si l'auth ne passe pas automatiquement (401 errors), décommentez et utilisez vos credentials (mais insecure, ne commitez pas en clair !)
+                        // 'Authorization': 'Basic ' + btoa('admin:Sri2677+')
+                    }
+                });
+                if (!response.ok) throw new Error(`Erreur proxy ${response.status} pour ${url}`);
+                return await response.json();
+            } catch (error) {
+                console.error(`Échec de fetchViaProxy:`, error);
+                showStatus('Erreur lors de la récupération des données API : ' + error.message, 'error');
+                return null;
+            }
+        }
 
         function generateDynamicColors(modalities) {
             return modalities.reduce((acc, modality, index) => {
@@ -966,8 +982,7 @@
             const bbox = `${lon - bboxSize},${lat - bboxSize},${lon + bboxSize},${lat + bboxSize}`;
             const url = `https://hubeau.eaufrance.fr/api/v2/hydrometrie/referentiel/stations?bbox=${bbox}&fields=code_station,libelle_station`;
             try {
-                const response = await fetch(url, { mode: 'cors' });
-                const data = await response.json();
+                const data = await fetchViaProxy(url);
                 return data.data || [];
             } catch (error) {
                 console.error('Erreur fetch stations Hub\'Eau:', error);
@@ -978,8 +993,7 @@
         async function fetchHubEauDebits(codeStation, dateDebut, dateFin) {
             const url = `https://hubeau.eaufrance.fr/api/v2/hydrometrie/observations_tr?code_entite=${codeStation}&grandeur_hydro=Q&date_debut_obs=${dateDebut}&date_fin_obs=${dateFin}&fields=date_obs,resultat_obs&size=100`;
             try {
-                const response = await fetch(url, { mode: 'cors' });
-                const data = await response.json();
+                const data = await fetchViaProxy(url);
                 if (!data.data || data.data.length === 0) {
                     return { avgDebit: null, recentDebit: null, debits: [], dates: [] };
                 }
@@ -1004,7 +1018,7 @@
     // Si on n'a pas le code, on le cherche par le nom de la station
     if (!codeStation) {
         const stationsUrl = `https://hubeau.eaufrance.fr/api/v2/hydrometrie/referentiel/stations?libelle_station=${encodeURIComponent(station)}&size=1`;
-        const stationsData = await fetch(stationsUrl, { mode: 'cors' });
+        const stationsData = await fetchViaProxy(stationsUrl);
 
         if (stationsData && stationsData.data && stationsData.data.length > 0) {
             codeStation = stationsData.data[0].code_station;
@@ -2317,4 +2331,4 @@
         });
     </script>
 </body>
-</html>```
+</html>
