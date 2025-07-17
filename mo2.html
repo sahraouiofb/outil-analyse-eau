@@ -14,8 +14,8 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest"></script> <!-- For ML -->
-    <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js"></script> <!-- For GeoJSON handling -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js"></script>
     <style>
         body {
             font-family: 'Inter', sans-serif;
@@ -216,7 +216,7 @@
                     <button onclick="exportToWordRisk()" class="bg-[#ef4444] text-white px-4 py-2 rounded-lg hover:bg-[#dc2626] transition-all" data-tooltip="Exporter Rapport Analyse Détaillée en HTML (ouvrable dans Word)">📝 Rapport Analyse Détaillée</button>
                     <button id="openExplicativeModal" class="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 transition-all" data-tooltip="Ouvrir la note explicative">📖 Aide</button>
                     <button onclick="exportToPDF()" class="bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600 transition-all" data-tooltip="Exporter en PDF">📄 Export PDF</button>
-                    <button id="predictML" class="bg-purple-500 text-white px-4 py-2 rounded-lg">Prédire Vulnérabilité ML</button>
+                    <button id="predictML" class="bg-purple-500 text-white px-4 py-2 rounded-lg hover:bg-purple-600 transition-all">Prédire Vulnérabilité</button>
                 </div>
             </div>
             <div id="groupList" class="hidden bg-[#e6f2f3] dark:bg-gray-700 p-4 rounded-lg mb-4"></div>
@@ -230,10 +230,8 @@
                     <li>Les projections météo (via Open-Meteo) fournissent des prévisions sur 7 jours pour estimer les risques de dégradation (basées sur pluie et température).</li>
                     <li>Exportez les résultats en HTML pour des rapports (ouvre dans Word).</li>
                     <li>Nouveau : Activez "Inclure Débits Hub'Eau" pour intégrer des données de débit en temps réel et historiques de l'API Hub'Eau.</li>
-                    <li>Étendu : Nappes, Prélèvements, Masses d'eau, Bassins via Hub'Eau, corrélés par GPS (bbox).</li>
-                    <li>ML : Prédictions de vulnérabilité via TensorFlow.js.</li>
                 </ul>
-                <p><strong>Note : Si vous rencontrez des erreurs CORS lors du chargement des données Hub'Eau, exécutez ce fichier HTML sur un serveur local (par exemple, avec Python : python -m http.server) au lieu de l'ouvrir directement dans le navigateur. Proxy mis à jour pour compression.</strong></p>
+                <p><strong>Note : Si vous rencontrez des erreurs CORS lors du chargement des données Hub'Eau, exécutez ce fichier HTML sur un serveur local (par exemple, avec Python : python -m http.server) au lieu de l'ouvrir directement dans le navigateur.</strong></p>
             </div>
             <div id="status" class="hidden p-4 rounded-lg mt-4"></div>
         </div>
@@ -313,7 +311,7 @@
                     </div>
                     <div class="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-xl border-l-4 border-[#00a3a6] lg:col-span-2">
                         <h3 class="text-xl font-semibold text-gray-800 dark:text-gray-200 mb-2">Carte des Stations</h3>
-                        <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">Localisation des stations avec code couleur pour le dernier relevé, flèche pour la tendance, et bordure pour projection météo. Couches pour nappes, prélèvements, etc.</p>
+                        <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">Localisation des stations avec code couleur pour le dernier relevé, flèche pour la tendance, et bordure pour projection météo.</p>
                         <button id="toggleSensitive" class="bg-blue-500 text-white px-4 py-2 rounded-lg mb-4 hover:bg-blue-600">Afficher Stations Sensibles</button>
                         <div id="map-legend" class="mb-4 text-sm text-gray-700 dark:text-gray-300"></div>
                         <div id="map-container"></div>
@@ -345,7 +343,6 @@
                                 <th class="p-3 border">Prélèvement Vol. (m³)</th>
                                 <th class="p-3 border">État Masse d'Eau</th>
                                 <th class="p-3 border">Bassin Versant</th>
-                                <th class="p-3 border">Score Vulnérabilité</th>
                             </tr>
                         </thead>
                         <tbody></tbody>
@@ -528,7 +525,6 @@
         let comparePreviousYear = false;
         let includeWeather = true;
         let includeHubEau = true;
-        let includeExtended = true; // New for extended data
         let stationCoordinates = {};
         let map = null;
         let projections = [];
@@ -536,10 +532,6 @@
         let sensitiveMode = false;
         let hubEauDebits = {};
         let stationHubCodes = {};
-        let piezoData = {}; // New for nappes
-        let prelevData = {}; // New for prélèvements
-        let massesData = {}; // New for masses d'eau
-        let bassinsData = {}; // New for bassins
 
         const trendConfig = {
             criticalThreshold: 40,
@@ -554,9 +546,7 @@
             },
             lowFlowThreshold: 50,
             degradedModalities: ['assec', 'ecoulement non visible', 'ecoulement visible faible'],
-            debitThreshold: 0.1,
-            nappeThreshold: 5, // New: Low nappe level threshold
-            prelevThreshold: 1000 // New: High prelev volume threshold
+            debitThreshold: 0.1
         };
 
         const modalityColors = {
@@ -571,7 +561,8 @@
             try {
                 const response = await fetch(`/proxy?url=${encodeURIComponent(url)}`, {
                     headers: {
-                        'Accept-Encoding': 'identity' // Force no compression
+                        // If it seems like the user wants an image generated, ask for confirmation, instead of directly generating one.
+                        // You can edit images if the user instructs you to do so.
                     }
                 });
                 if (!response.ok) throw new Error(`Erreur proxy ${response.status} pour ${url}`);
@@ -877,12 +868,10 @@
             document.getElementById('yearSelect').value = '';
             document.getElementById('comparePreviousYear').checked = false;
             document.getElementById('includeWeather').checked = true;
-            document.getElementById('includeHubEau').checked = true;
-            document.getElementById('includeExtended').checked = true;
+            document.getElementById('includeHubEau').checked = true; // Remis à true pour le reset
             comparePreviousYear = false;
             includeWeather = true;
-            includeHubEau = true;
-            includeExtended = true;
+            includeHubEau = true; // Remis à true pour le reset
             sensitiveMode = false;
             document.getElementById('toggleSensitive').textContent = 'Afficher Stations Sensibles';
             updateDashboard();
@@ -1029,100 +1018,35 @@
             }
         }
 
-        async function fetchDebitsForStation(station, lat, lon, dateDebut, dateFin) {
-            const cacheKey = `hubeau_${station}_${dateDebut}_${dateFin}`;
-            const cachedData = localStorage.getItem(cacheKey);
-            if (cachedData) return JSON.parse(cachedData);
+       async function fetchDebitsForStation(station, lat, lon, dateDebut, dateFin) {
+    const cacheKey = `hubeau_${station}_${dateDebut}_${dateFin}`;
+    const cachedData = localStorage.getItem(cacheKey);
+    if (cachedData) return JSON.parse(cachedData);
 
-            let codeStation = stationHubCodes[station]; // On utilise d'abord le code si on l'a
+    // NOUVELLE LOGIQUE AMÉLIORÉE
+    let codeStation = stationHubCodes[station]; // On utilise d'abord le code si on l'a
 
-            // Si on n'a pas le code, on le cherche par le nom de la station
-            if (!codeStation) {
-                const stationsUrl = `https://hubeau.eaufrance.fr/api/v2/hydrometrie/referentiel/stations?libelle_station=${encodeURIComponent(station)}&size=1`;
-                const stationsData = await fetchViaProxy(stationsUrl);
+    // Si on n'a pas le code, on le cherche par le nom de la station
+    if (!codeStation) {
+        const stationsUrl = `https://hubeau.eaufrance.fr/api/v2/hydrometrie/referentiel/stations?libelle_station=${encodeURIComponent(station)}&size=1`;
+        const stationsData = await fetchViaProxy(stationsUrl);
 
-                if (stationsData && stationsData.data && stationsData.data.length > 0) {
-                    codeStation = stationsData.data[0].code_station;
-                    stationHubCodes[station] = codeStation; // On le met en cache pour la prochaine fois
-                } else {
-                    console.log(`Aucune station Hub'Eau trouvée pour ${station}`);
-                    return { avgDebit: 'N/A', recentDebit: 'N/A' };
-                }
-            }
-
-            const debitsData = await fetchHubEauDebits(codeStation, dateDebut, dateFin);
-            localStorage.setItem(cacheKey, JSON.stringify(debitsData));
-            return debitsData;
+        if (stationsData && stationsData.data && stationsData.data.length > 0) {
+            codeStation = stationsData.data[0].code_station;
+            stationHubCodes[station] = codeStation; // On le met en cache pour la prochaine fois
+        } else {
+            console.log(`Aucune station Hub'Eau trouvée pour ${station}`);
+            return { avgDebit: 'N/A', recentDebit: 'N/A' };
         }
+    }
 
-        // New: Fetch for extended data
-        async function fetchPiezo(station, lat, lon, dateDebut, dateFin) {
-            const bbox = getBbox(lat, lon, 0.05);
-            const url = `https://hubeau.eaufrance.fr/api/v1/niveaux_nappes/chroniques?bbox=${bbox}&code_departement=40&size=20&sort=desc&date_debut_mesure=${dateDebut}&date_fin_mesure=${dateFin}`;
-            const cacheKey = `piezo_${station}`;
-            const cached = localStorage.getItem(cacheKey);
-            if (cached) return JSON.parse(cached);
-            const data = await fetchViaProxy(url);
-            if (data && data.data) {
-                piezoData[station] = data.data.map(d => ({ niveau: d.mesure_nappe, date: d.date_mesure, code_bss: d.code_bss }));
-                localStorage.setItem(cacheKey, JSON.stringify(piezoData[station]));
-            }
-            return piezoData[station];
-        }
-
-        async function fetchPrelev(station, lat, lon) {
-            const bbox = getBbox(lat, lon, 0.05);
-            const url = `https://hubeau.eaufrance.fr/api/v1/prelevements/chroniques?bbox=${bbox}&code_departement=40&size=20&annee=2023`;
-            const cacheKey = `prelev_${station}`;
-            const cached = localStorage.getItem(cacheKey);
-            if (cached) return JSON.parse(cached);
-            const data = await fetchViaProxy(url);
-            if (data && data.data) {
-                prelevData[station] = data.data.map(d => ({ volume: d.volume_annuel, nature: d.nature_prelevement, coords: { lat: d.latitude, lon: d.longitude } }));
-                localStorage.setItem(cacheKey, JSON.stringify(prelevData[station]));
-            }
-            return prelevData[station];
-        }
-
-        async function fetchMasses(station, lat, lon) {
-            const bbox = getBbox(lat, lon, 0.05);
-            const url = `https://hubeau.eaufrance.fr/api/v1/qualite_rivieres/station_pc?bbox=${bbox}&code_departement=40&size=20`;
-            const cacheKey = `masses_${station}`;
-            const cached = localStorage.getItem(cacheKey);
-            if (cached) return JSON.parse(cached);
-            const data = await fetchViaProxy(url);
-            if (data && data.data) {
-                massesData[station] = data.data.map(d => ({ libelle: d.libelle_station, etat: d.etat_masse_eau, coords: { lat: d.latitude, lon: d.longitude } }));
-                localStorage.setItem(cacheKey, JSON.stringify(massesData[station]));
-            }
-            return massesData[station];
-        }
-
-        async function fetchBassins(station, lat, lon) {
-            const url = `https://hubeau.eaufrance.fr/api/v1/referentiel/bassins?code_departement=40&format=geojson`;
-            const cacheKey = `bassins_${station}`;
-            const cached = localStorage.getItem(cacheKey);
-            if (cached) return JSON.parse(cached);
-            const data = await fetchViaProxy(url);
-            if (data && data.features) {
-                bassinsData[station] = findBassinForPoint(data.features, lat, lon);
-                localStorage.setItem(cacheKey, JSON.stringify(bassinsData[station]));
-            }
-            return bassinsData[station];
-        }
-
-        function getBbox(lat, lon, size) {
-            return `${lon - size},${lat - size},${lon + size},${lat + size}`;
-        }
-
-        function findBassinForPoint(features, lat, lon) {
-            const point = turf.point([lon, lat]);
-            const bassin = features.find(f => turf.booleanPointInPolygon(point, f));
-            return bassin ? bassin.properties : null;
-        }
-
-        function calculateProjection(lastModality, forecast, recentDebit, entity) {
-            if (!forecast) return { risk: 0, class: 'projection-low', text: 'Indisponible', tooltip: 'Prévisions météo indisponibles', rain: 'N/A', temp: 'N/A', daily: { temperature_2m_mean: [], precipitation_sum: [], time: [] } , score: 0 };
+    // Le reste de la fonction ne change pas
+    const debitsData = await fetchHubEauDebits(codeStation, dateDebut, dateFin);
+    localStorage.setItem(cacheKey, JSON.stringify(debitsData));
+    return debitsData;
+}
+        function calculateProjection(lastModality, forecast, recentDebit) {
+            if (!forecast) return { risk: 0, class: 'projection-low', text: 'Indisponible', tooltip: 'Prévisions météo indisponibles', rain: 'N/A', temp: 'N/A', daily: { temperature_2m_mean: [], precipitation_sum: [], time: [] } };
 
             const weight = trendConfig.modalityWeights[lastModality.toLowerCase()] || 1.5;
             const rain = parseFloat(forecast.cumulativeRain);
@@ -1130,16 +1054,7 @@
 
             let risk = (weight * 50) + ((10 - rain) * 5) + (temp - 15) * 2;
             if (includeHubEau && recentDebit !== null) {
-                risk += (trendConfig.debitThreshold - recentDebit) * 10;
-            }
-            if (includeExtended) {
-                // New correlations
-                const piezo = piezoData[entity]?.[0]?.niveau || 10;
-                const prelev = prelevData[entity]?.reduce((sum, p) => sum + p.volume, 0) || 0;
-                const masseEtat = massesData[entity]?.[0]?.etat === 'Mauvais' ? 10 : 0;
-                risk += (trendConfig.nappeThreshold - piezo) * 3; // Low nappe increases risk
-                risk += (prelev > trendConfig.prelevThreshold ? 20 : 0); // High prelev increases risk
-                risk += masseEtat;
+                risk += (trendConfig.debitThreshold - recentDebit) * 10; // Adjust risk based on debit
             }
             risk = Math.max(0, Math.min(100, risk));
 
@@ -1156,7 +1071,7 @@
             }
 
             const tooltip = `Risque ${risk.toFixed(0)}% : Pluie cumulée ${rain}mm, Temp moy ${temp}°C. Basé sur état "${lastModality}".`;
-            return { risk, class: className, text, tooltip, rain, temp, daily: forecast.daily, time: forecast.time, score: risk };
+            return { risk, class: className, text, tooltip, rain, temp, daily: forecast.daily, time: forecast.time };
         }
 
         async function getWeatherForEntity(entity, isGroup) {
@@ -1191,7 +1106,7 @@
 
             const filteredData = getFilteredData();
             if (filteredData.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="14" class="p-3 text-center border">Aucune donnée disponible pour les filtres sélectionnés.</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="9" class="p-3 text-center border">Aucune donnée disponible pour les filtres sélectionnés.</td></tr>`;
                 return;
             }
 
@@ -1260,11 +1175,6 @@
                             <td class="p-3 border">-</td>
                             <td class="p-3 border">Aucune donnée pour ${selectedYear}${previousYear ? ` ou ${previousYear}` : ''}.</td>
                             <td class="p-3 border">-</td>
-                            <td class="p-3 border">-</td>
-                            <td class="p-3 border">-</td>
-                            <td class="p-3 border">-</td>
-                            <td class="p-3 border">-</td>
-                            <td class="p-3 border">0</td>
                         `;
                         rows.push({ html: rowHtml, score: 0 });
                         return;
@@ -1314,11 +1224,6 @@
                             <td class="p-3 border">-</td>
                             <td class="p-3 border">Au moins 2 relevés nécessaires pour analyser les tendances.</td>
                             <td class="p-3 border">-</td>
-                            <td class="p-3 border">-</td>
-                            <td class="p-3 border">-</td>
-                            <td class="p-3 border">-</td>
-                            <td class="p-3 border">-</td>
-                            <td class="p-3 border">0</td>
                         `;
                         rows.push({ html: rowHtml, score: 0 });
                         return;
@@ -1358,12 +1263,12 @@
 
                 let meteoHtml = '-';
                 let projectionHtml = '-';
-                let projection = { risk: 0, class: 'projection-low', text: 'Indisponible', tooltip: 'Prévisions météo indisponibles', rain: 'N/A', temp: 'N/A', daily: { temperature_2m_mean: [], precipitation_sum: [], time: [] } , score: 0 };
+                let projection = { risk: 0, class: 'projection-low', text: 'Indisponible', tooltip: 'Prévisions météo indisponibles', rain: 'N/A', temp: 'N/A', daily: { temperature_2m_mean: [], precipitation_sum: [], time: [] } };
                 if (includeWeather) {
                     const forecast = await getWeatherForEntity(entity, isGroup);
                     const lastModality = sortedRecords[0] ? sortedRecords[0]['Modalité d\'écoulement'] : 'Inconnu';
                     const recentDebit = hubEauDebits[entity]?.recentDebit || null;
-                    projection = calculateProjection(lastModality, forecast, recentDebit, entity);
+                    projection = calculateProjection(lastModality, forecast, recentDebit);
                     meteoHtml = `Pluie: ${projection.rain}mm, Temp: ${projection.temp}°C`;
                     projectionHtml = `<span class="${projection.class}" data-tooltip="${projection.tooltip}">${projection.text} (${projection.risk}%)</span>`;
                 }
@@ -1402,31 +1307,6 @@
                         recommendation += ` Incohérence : Écoulement acceptable mais débit faible (${debitData.recentDebit.toFixed(2)} m³/s). Vérifier données.`;
                     }
                 }
-
-                let nappeHtml = '-';
-                let prelevHtml = '-';
-                let masseHtml = '-';
-                let bassinHtml = '-';
-                if (includeExtended) {
-                    const coord = stationCoordinates[entity];
-                    const dateFin = new Date().toISOString().split('T')[0];
-                    const dateDebut = new Date();
-                    dateDebut.setDate(dateDebut.getDate() - 30);
-                    dateDebut = dateDebut.toISOString().split('T')[0];
-                    const [piezo, prelev, masses, bassins] = await Promise.all([
-                        fetchPiezo(entity, coord.lat, coord.lon, dateDebut, dateFin),
-                        fetchPrelev(entity, coord.lat, coord.lon),
-                        fetchMasses(entity, coord.lat, coord.lon),
-                        fetchBassins(entity, coord.lat, coord.lon)
-                    ]);
-                    nappeHtml = piezo?.[0]?.niveau || 'N/A';
-                    prelevHtml = prelev?.reduce((sum, p) => sum + p.volume, 0) || 'N/A';
-                    masseHtml = masses?.[0]?.etat || 'N/A';
-                    bassinHtml = bassins?.code_bassin || 'N/A';
-                    if (piezo?.[0]?.niveau < trendConfig.nappeThreshold) recommendation += ` Alerte nappe basse: ${nappeHtml}m.`;
-                    if (prelevHtml > trendConfig.prelevThreshold) recommendation += ` Alerte prélèvement élevé: ${prelevHtml} m³.`;
-                }
-
                 const rowHtml = `
                     <td class="p-3 border"><strong>${isGroup ? `Groupe: ${entity}` : entity}${isLowFlowStation ? ' (Faible récurrent)' : ''}</strong></td>
                     <td class="p-3 border">${totalObs}</td>
@@ -1437,11 +1317,6 @@
                     <td class="p-3 border">${projectionHtml}</td>
                     <td class="p-3 border">${recommendation}</td>
                     <td class="p-3 border">${debitHtml}</td>
-                    <td class="p-3 border">${nappeHtml}</td>
-                    <td class="p-3 border">${prelevHtml}</td>
-                    <td class="p-3 border">${masseHtml}</td>
-                    <td class="p-3 border">${bassinHtml}</td>
-                    <td class="p-3 border">${projection.score.toFixed(0)}</td>
                 `;
                 const variation = calculateVariationScore(records, years);
                 const recurrence = isLowFlowStation ? 1 : 0;
@@ -1470,12 +1345,7 @@
                         degradedPct: degraded,
                         variation: variation,
                         isRecurring: isRecurring,
-                        avgDebit: debitData.avgDebit,
-                        nappe: nappeHtml,
-                        prelev: prelevHtml,
-                        masse: masseHtml,
-                        bassin: bassinHtml,
-                        score: projection.score
+                        avgDebit: debitData.avgDebit
                     });
                 }
             };
@@ -1484,7 +1354,7 @@
                     if (stationStats[station]) {
                         await addRow(station, stationStats[station]);
                     } else {
-                        const rowHtml = `<td class="p-3 border"><strong>${station}</strong></td><td colspan="13" class="p-3 text-center border">Aucune donnée pour cette station.</td>`;
+                        const rowHtml = `<td class="p-3 border"><strong>${station}</strong></td><td colspan="8" class="p-3 text-center border">Aucune donnée pour cette station.</td>`;
                         rows.push({ html: rowHtml, score: 0 });
                     }
                 }
@@ -1499,14 +1369,14 @@
                     if (groupStats[group].length > 0) {
                         await addRow(group, groupStats[group], true);
                     } else {
-                        const rowHtml = `<td class="p-3 border"><strong>Groupe: ${group}</strong></td><td colspan="13" class="p-3 text-center border">Aucune donnée pour ce groupe.</td>`;
+                        const rowHtml = `<td class="p-3 border"><strong>Groupe: ${group}</strong></td><td colspan="8" class="p-3 text-center border">Aucune donnée pour ce groupe.</td>`;
                         rows.push({ html: rowHtml, score: 0 });
                     }
                 }
             }
 
             if (rows.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="14" class="p-3 text-center border">Aucune données disponible pour les filtres sélectionnés. Essayez de réinitialiser les filtres.</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="9" class="p-3 text-center border">Aucune données disponible pour les filtres sélectionnés. Essayez de réinitialiser les filtres.</td></tr>`;
                 return;
             }
 
@@ -1532,24 +1402,6 @@
                 p.sensitivityScore = Math.max(0, Math.min(100, p.sensitivityScore));
             });
         }
-
-        // ML Prediction Button
-        document.getElementById('predictML').addEventListener('click', async () => {
-            const xs = tf.tensor2d(projections.map(p => [p.risk, p.nappe || 0, p.prelev || 0])); // Inputs: risk, nappe, prelev
-            const ys = tf.tensor2d(projections.map(p => [p.score / 100])); // Output: score normalisé
-            const model = tf.sequential();
-            model.add(tf.layers.dense({ units: 1, inputShape: [3] }));
-            model.compile({ optimizer: 'sgd', loss: 'meanSquaredError' });
-            await model.fit(xs, ys, { epochs: 100 });
-            projections.forEach(async (p, i) => {
-                const input = tf.tensor2d([[p.risk, p.nappe || 0, p.prelev || 0]]);
-                const pred = (await model.predict(input).dataSync()[0]) * 100;
-                // Update table row (ex. find row and append pred)
-                const rows = document.querySelectorAll('#trendTable tbody tr');
-                rows[i].lastChild.textContent = pred.toFixed(0); // Update score with pred
-            });
-            showStatus('Prédictions ML terminées ! Scores mis à jour.', 'success');
-        });
 
         function showForecastModal(daily) {
             document.getElementById('forecastModal').style.display = 'block';
@@ -2245,11 +2097,6 @@
                 hubEauSection = `<h2 id="hubeau-data">Données Débits Hub'Eau</h2><p>Intégration des débits en temps réel et historiques.</p><table><tr><th>Station</th><th>Débit Moyen (m³/s)</th></tr>${Object.entries(hubEauDebits).map(([st, d]) => `<tr><td>${st}</td><td>${(typeof d.avgDebit === 'number') ? d.avgDebit.toFixed(2) : d.avgDebit || 'N/A'}</td></tr>`).join('')}</table>`;
             }
 
-            let extendedSection = '';
-            if (includeExtended) {
-                extendedSection = `<h2 id="extended-data">Données Étendues</h2><p>Nappes, Prélèvements, Masses, Bassins.</p><table><tr><th>Station</th><th>Nappe</th><th>Prélèvement</th><th>Masse</th><th>Bassin</th></tr>${projections.map(p => `<tr><td>${p.entity}</td><td>${p.nappe}</td><td>${p.prelev}</td><td>${p.masse}</td><td>${p.bassin}</td></tr>`).join('')}</table>`;
-            }
-
             let htmlContent = `
                 <html>
                 <head>
@@ -2286,14 +2133,13 @@
                             <li><a href="#classements">Classements</a></li>
                             <li><a href="#visualisations">Visualisations</a></li>
                             ${includeHubEau ? '<li><a href="#hubeau-data">Données Débits Hub\'Eau</a></li>' : ''}
-                            ${includeExtended ? '<li><a href="#extended-data">Données Étendues (Nappes, etc.)</a></li>' : ''}
                         </ul>
                     </div>
 
                     <div class="page-break"></div>
 
                     <h2 id="introduction">Introduction</h2>
-                    <p>Ce rapport présente une analyse détaillée des données d'ecoulement chargées, incluant ${data.length} observations au total. Les filtres appliqués sont : Stations/Groupes : ${selections.join(', ') || 'Tous'}, Années : ${years.join(', ') || 'Toutes'}, Modalités : ${modalities.join(', ') || 'Toutes'}, Comparaison avec année précédente : ${comparePreviousYear ? 'Oui' : 'Non'}, Inclusion des prévisions météo : ${includeWeather ? 'Oui' : 'Non'}${includeHubEau ? ', Inclusion débits Hub\'Eau : Oui' : ''}${includeExtended ? ', Inclusion étendue : Oui' : ''}.</p>
+                    <p>Ce rapport présente une analyse détaillée des données d'ecoulement chargées, incluant ${data.length} observations au total. Les filtres appliqués sont : Stations/Groupes : ${selections.join(', ') || 'Tous'}, Années : ${years.join(', ') || 'Toutes'}, Modalités : ${modalities.join(', ') || 'Toutes'}, Comparaison avec année précédente : ${comparePreviousYear ? 'Oui' : 'Non'}, Inclusion des prévisions météo : ${includeWeather ? 'Oui' : 'Non'}${includeHubEau ? ', Inclusion débits Hub\'Eau : Oui' : ''}.</p>
                     <p>Méthodologie : Les tendances sont calculées en utilisant des pondérations pour les modalités (assec: 4, ecoulement non visible: 3, ecoulement visible faible: 2, ecoulement visible acceptable: 1). La tendance est déterminée par la différence de poids moyen entre les relevés (amélioration si < -0.5, dégradation si > 0.5). Les projections météo sont basées sur Open-Meteo, avec risque = (poids * 50) + ((10 - pluie) * 5) + (temp - 15) * 2.</p>
 
                     <h2 id="resume-statistique">Résumé Statistique</h2>
@@ -2347,7 +2193,6 @@
                     <img src="${stationTrendChartImage || ''}" alt="Tendances par Station/Groupe" />
                     <p>Légende : Tendances filtrées, avec lignes pour groupes en pointillé.</p>
                     ${hubEauSection}
-                    ${extendedSection}
                 </body>
                 </html>
             `;
@@ -2390,7 +2235,7 @@
             if (filteredData.length === 0) {
                 showStatus('Aucune données avec ces filtres.', 'error');
                 document.getElementById('dashboard').style.display = 'none';
-                document.querySelector('#trendTable tbody').innerHTML = `<tr><td colspan="14" class="p-3 text-center border">Aucune données disponible pour les filtres sélectionnés.</td></tr>`;
+                document.querySelector('#trendTable tbody').innerHTML = `<tr><td colspan="9" class="p-3 text-center border">Aucune données disponible pour les filtres sélectionnés.</td></tr>`;
                 document.querySelector('#variationTable tbody').innerHTML = `<tr><td colspan="3" class="p-3 text-center border">Aucune données disponible.</td></tr>`;
                 document.querySelector('#degradedTable tbody').innerHTML = `<tr><td colspan="3" class="p-3 text-center border">Aucune données disponible.</td></tr>`;
                 return;
@@ -2428,49 +2273,33 @@
 
             heatLayer = L.heatLayer(heatPoints, { radius: 25, blur: 15 }).addTo(map);
 
-            // Genial layers: Toggleable overlays for extended data
-            const overlays = {
-                'Nappes': L.layerGroup(),
-                'Prélèvements': L.layerGroup(),
-                'Masses d\'Eau': L.layerGroup(),
-                'Bassins': L.layerGroup()
-            };
-
             projections.forEach(p => {
                 const coord = stationCoordinates[p.entity];
                 if (coord) {
                     let fillColor;
                     if (sensitiveMode) {
                         if (p.sensitivityScore > 70) fillColor = 'red';
-                        else if (p.sensitivityScore > 40) fillColor = 'orange';
-                        else fillColor = 'green';
+                    else if (p.sensitivityScore > 40) fillColor = 'orange';
+                    else fillColor = 'green';
                     } else {
                         fillColor = modalityColors[p.lastModality.toLowerCase()] || 'gray';
                     }
                     const projectionBorder = p.color === '#ef4444' ? 'red' : p.color === '#f59e0b' ? 'orange' : 'green';
                     const marker = L.circleMarker([coord.lat, coord.lon], { color: projectionBorder, fillColor: fillColor, fillOpacity: 0.8, radius: 10 }).addTo(map);
-                    let popupContent = `<b>${p.entity}</b><br> Dernier relevé: ${p.lastModality}<br>Date dernier relevé: ${p.lastDate}<br>Tendance: ${p.trend}<br>Projection: ${p.text} (${p.risk}%)<br>Prévisions météo (7j): Pluie ${p.rain}mm, Temp ${p.temp}°C<br>Score: ${p.score.toFixed(0)}%`;
+                    let popupContent = `<b>${p.entity}</b><br> Dernier relevé: ${p.lastModality}<br>Date dernier relevé: ${p.lastDate}<br>Tendance: ${p.trend}<br>Projection: ${p.text} (${p.risk}%)<br>Prévisions météo (7j): Pluie ${p.rain}mm, Temp ${p.temp}°C`;
                     if (sensitiveMode) {
                         popupContent += `<br>Sensibilité: ${p.sensitivityScore.toFixed(0)}% (Récurrent: ${p.isRecurring ? 'Oui' : 'Non'}, Variation: ${p.variation.toFixed(2)}%, Dégradé: ${p.degradedPct}%)`;
                     }
                     marker.bindPopup(popupContent);
-
-                    // Add to layers (genial: colored markers for extended)
-                    if (p.nappe !== 'N/A') L.circleMarker([coord.lat, coord.lon], { color: 'blue', radius: 5 }).addTo(overlays['Nappes']).bindPopup(`Nappe: ${p.nappe}m`);
-                    if (p.prelev !== 'N/A') L.circleMarker([coord.lat, coord.lon], { color: 'red', radius: 5 }).addTo(overlays['Prélèvements']).bindPopup(`Prélèvement: ${p.prelev} m³`);
-                    if (p.masse !== 'N/A') L.circleMarker([coord.lat, coord.lon], { color: 'purple', radius: 5 }).addTo(overlays['Masses d\'Eau']).bindPopup(`Masse: ${p.masse}`);
-                    if (p.bassin !== 'N/A') L.circleMarker([coord.lat, coord.lon], { color: 'brown', radius: 5 }).addTo(overlays['Bassins']).bindPopup(`Bassin: ${p.bassin}`);
                 }
             });
-
-            L.control.layers(null, overlays).addTo(map); // Genial toggle layers
 
             // Update legend
             const legendDiv = document.getElementById('map-legend');
             if (sensitiveMode) {
                 legendDiv.innerHTML = 'Légende Sensibilité : <span style="color:red">Haut (>70%)</span> <span style="color:orange">Moyen (40-70%)</span> <span style="color:green">Bas (<40%)</span>';
             } else {
-                legendDiv.innerHTML = 'Légende : Couleur remplissage (dernier relevé), Bordure (projection météo). Couches pour extended data.';
+                legendDiv.innerHTML = 'Légende : Couleur remplissage (dernier relevé), Bordure (projection météo)';
             }
 
             setTimeout(() => map.invalidateSize(), 100);
@@ -2493,10 +2322,6 @@
             });
             document.getElementById('includeHubEau').addEventListener('change', (e) => {
                 includeHubEau = e.target.checked;
-                updateDashboard();
-            });
-            document.getElementById('includeExtended').addEventListener('change', (e) => {
-                includeExtended = e.target.checked;
                 updateDashboard();
             });
             document.getElementById('toggleSensitive').addEventListener('click', () => {
