@@ -964,7 +964,7 @@
         async function fetchHubEauStations(lat, lon) {
             const bboxSize = 0.1; // Approximate 10km radius
             const bbox = `${lon - bboxSize},${lat - bboxSize},${lon + bboxSize},${lat + bboxSize}`;
-            const url = `https://hubeau.eaufrance.fr/api/v1/hydrometrie/referentiel/stations?bbox=${bbox}&fields=code_station,libelle_station`;
+            const url = `https://hubeau.eaufrance.fr/api/v2/hydrometrie/referentiel/stations?bbox=${bbox}&fields=code_station,libelle_station`;
             try {
                 const response = await fetch(url, { mode: 'cors' });
                 const data = await response.json();
@@ -976,7 +976,7 @@
         }
 
         async function fetchHubEauDebits(codeStation, dateDebut, dateFin) {
-            const url = `https://hubeau.eaufrance.fr/api/v1/hydrometrie/observations_tr?code_entite=${codeStation}&grandeur_hydro=Q&date_debut_obs=${dateDebut}&date_fin_obs=${dateFin}&fields=date_obs,resultat_obs&size=100`;
+            const url = `https://hubeau.eaufrance.fr/api/v2/hydrometrie/observations_tr?code_entite=${codeStation}&grandeur_hydro=Q&date_debut_obs=${dateDebut}&date_fin_obs=${dateFin}&fields=date_obs,resultat_obs&size=100`;
             try {
                 const response = await fetch(url, { mode: 'cors' });
                 const data = await response.json();
@@ -1003,8 +1003,8 @@
 
     // Si on n'a pas le code, on le cherche par le nom de la station
     if (!codeStation) {
-        const stationsUrl = `https://hubeau.eaufrance.fr/api/v1/hydrometrie/referentiel/stations?libelle_station=${encodeURIComponent(station)}&size=1`;
-        const stationsData = await fetchViaProxy(stationsUrl);
+        const stationsUrl = `https://hubeau.eaufrance.fr/api/v2/hydrometrie/referentiel/stations?libelle_station=${encodeURIComponent(station)}&size=1`;
+        const stationsData = await fetch(stationsUrl, { mode: 'cors' });
 
         if (stationsData && stationsData.data && stationsData.data.length > 0) {
             codeStation = stationsData.data[0].code_station;
@@ -2317,4 +2317,4 @@
         });
     </script>
 </body>
-</html>
+</html>```
