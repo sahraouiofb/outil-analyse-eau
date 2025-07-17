@@ -1,29 +1,28 @@
-from flask import Flask, send_from_directory, request
+from flask import Flask, request
 from flask_httpauth import HTTPBasicAuth
 import requests
 
-# Initialisation simple de Flask
-app = Flask(__name__)
+# On dit à Flask que nos fichiers (comme mo2.html) sont dans le même dossier
+app = Flask(__name__, static_folder='.', static_url_path='')
 auth = HTTPBasicAuth()
 
-# --- Vos identifiants de connexion ---
+# --- Définissez vos identifiants ici ---
 users = {
     "admin": "Sri2677+" 
 }
 
 @auth.verify_password
 def verify_password(username, password):
-    if username in users and users[username] == password:
+    if username in users and users.get(username) == password:
         return username
 
-# --- Route principale qui sert le fichier HTML ---
+# --- Protéger l'accès à l'application ---
 @app.route('/')
 @auth.login_required
 def index():
-    # On dit à Flask de chercher 'mo2.html' dans le dossier courant '.'
-    return send_from_directory('.', 'mo2.html')
+    return app.send_static_file('mo2.html')
 
-# --- Route pour le proxy API ---
+# --- Protéger l'accès au proxy ---
 @app.route('/proxy')
 @auth.login_required
 def proxy():
@@ -34,5 +33,4 @@ def proxy():
     headers = {'User-Agent': 'Mozilla/5.0'}
     response = requests.get(target_url, headers=headers)
 
-    # On transmet la réponse de l'API telle quelle
     return response.content, response.status_code, response.headers.items()
