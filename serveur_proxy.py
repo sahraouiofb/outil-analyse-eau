@@ -8,7 +8,7 @@ auth = HTTPBasicAuth()
 
 # --- Vos identifiants de connexion ---
 users = {
-    "admin": "un_mot_de_passe_tres_secret" 
+    "admin": "Sri2677+" 
 }
 
 @auth.verify_password
