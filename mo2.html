@@ -14,6 +14,8 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest"></script> <!-- For ML -->
+    <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js"></script> <!-- For GeoJSON handling -->
     <style>
         body {
             font-family: 'Inter', sans-serif;
@@ -155,7 +157,7 @@
     <p class="text-red-500 italic text-sm absolute top-0 right-0 m-2">by SD40 2025</p>
     <header class="bg-gradient-to-r from-[#005566] to-[#00a3a6] shadow-md py-4">
         <div class="container mx-auto px-6 flex items-center justify-between">
-            <img src="téléchargement.png" alt="Logo OFB" class="h-16">
+            <img src="telechargement.png" alt="Logo OFB" class="h-16">
             <h1 class="text-3xl font-bold text-white">
                 Analyse Avancée des Écoulements - Office Français de la Biodiversité
             </h1>
@@ -216,7 +218,7 @@
             <div class="bg-[#e6f2f3] dark:bg-[#1c3e44] p-4 rounded-lg text-sm text-[#005566] dark:text-[#b3d6d8]">
                 <strong>💡 Comment utiliser :</strong>
                 <ul class="list-disc pl-5">
-                    <li>Chargez un fichier Excel (.xlsx) avec les colonnes : Station d'écoulement, Modalité d'écoulement, Date de la campagne, Latitude, Longitude.</li>
+                    <li>Chargez un fichier Excel (.xlsx) avec les colonnes : Station d'ecoulement, Modalité d'ecoulement, Date de la campagne, Latitude, Longitude.</li>
                     <li>Créez des groupes en sélectionnant plusieurs stations et en saisissant un nom.</li>
                     <li>Filtrez par stations, années ou modalités pour analyser les tendances sur les deux derniers relevés ou comparer avec l'année précédente.</li>
                     <li>La carte montre les stations avec couleurs pour le dernier relevé et flèche pour la tendance.</li>
@@ -363,7 +365,7 @@
                     <li><strong>Importation de Données</strong> :
                         <ul>
                             <li>Chargez un fichier Excel (.xlsx) via le bouton "📁 Charger".</li>
-                            <li>Colonnes requises : "Station d'ecoulement" (nom de la station), "Modalité d'ecoulement" (ex. : "assec"), "Date de la campagne" (format date).</li>
+                            <li>Colonnes requises : "Station d'ecoulement", "Modalité d'ecoulement", "Date de la campagne".</li>
                             <li>Colonnes optionnelles : "Latitude" et "Longitude" (pour la carte, en coordonnées EPSG:2154 converties automatiquement en WGS84).</li>
                             <li>L'outil ignore les lignes avec modalités vides, "inconnu" ou "non observable".</li>
                         </ul>
@@ -548,12 +550,7 @@
 
         async function fetchViaProxy(url) {
             try {
-                const response = await fetch(`/proxy?url=${encodeURIComponent(url)}`, {
-                    headers: {
-                        // Si l'auth ne passe pas automatiquement (401 errors), décommentez et utilisez vos credentials (mais insecure, ne commitez pas en clair !)
-                        // 'Authorization': 'Basic ' + btoa('admin:Sri2677+')
-                    }
-                });
+                const response = await fetch(`/proxy?url=${encodeURIComponent(url)}`);
                 if (!response.ok) throw new Error(`Erreur proxy ${response.status} pour ${url}`);
                 return await response.json();
             } catch (error) {
@@ -1141,7 +1138,12 @@
             const recurringList = [];
 
             const addRow = async (entity, records, isGroup = false) => {
-                let sortedRecords, selectedYear, previousYear, dates, modalities, trendData;
+                let sortedRecords = [];
+                let selectedYear = null;
+                let previousYear = null;
+                let dates = [];
+                let modalities = [];
+                let trendData = null;
 
                 if (comparePrevious) {
                     const availableYears = [...new Set(records.map(r => new Date(r['Date de la campagne']).getFullYear()))].sort((a, b) => b - a);
