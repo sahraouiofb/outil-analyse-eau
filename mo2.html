@@ -73,7 +73,7 @@
         "Stations Excel": stationsLayer,
         "Masses d'eau": massesEauLayer,
         "Nappes": nappesLayer,
-        "Prélèvements": prelevementsLayer,
+        // "Prélèvements": prelevementsLayer, // désactivé car API fermée
         "Débits (V2)": debitsLayer
     };
     L.control.layers(null, overlayMaps).addTo(map);
@@ -81,7 +81,7 @@
     // Données globales
     let stationsExcel = [];
     let stationCoords = {}; // {nom: {lat, lon}}
-    let allHubEau = { masses: [], nappes: [], prelevements: [], debitsStations: [], debitsValues: [] };
+    let allHubEau = { masses: [], nappes: [], debitsStations: [], debitsValues: [] };
 
     // --- UI/UX
     function showLoading(on) { document.getElementById('loading').style.display = on ? 'block':'none'; }
@@ -150,34 +150,33 @@
         if (stationsExcel.length) map.setView([stationsExcel[0].lat, stationsExcel[0].lon], 10);
     }
 
-    // --- Charger les couches HubEau (1 seul appel massif par couche)
+    // --- Charger les couches HubEau (1 seul appel massif par couche) --- CORRIGÉ GPT 2025
     async function chargerToutesCouchesHubEau() {
         showLoading(true);
-        // Départements 40
         const dep = "40", sz = 1000;
 
-        // Masses d'eau V1
+        // Masses d'eau (OK)
         let url = `https://hubeau.eaufrance.fr/api/v1/qualite_rivieres/masse_eau?code_departement=${dep}&size=${sz}`;
         allHubEau.masses = (await fetchViaProxy(url)).data || [];
 
-        // Nappes V2
+        // Nappes (OK)
         url = `https://hubeau.eaufrance.fr/api/v2/nappes/stations_mesure?code_departement=${dep}&size=${sz}`;
         allHubEau.nappes = (await fetchViaProxy(url)).data || [];
 
-        // Prélèvements V1
-        url = `https://hubeau.eaufrance.fr/api/v1/prelevements/prelevements?code_departement=${dep}&size=${sz}`;
-        allHubEau.prelevements = (await fetchViaProxy(url)).data || [];
-
-        // Débits V2 - stations
-        url = `https://hubeau.eaufrance.fr/api/v2/hydrometrie/stations?code_departement=${dep}&size=${sz}`;
+        // Débits - stations (OK endpoint 2025)
+        url = `https://hubeau.eaufrance.fr/api/v2/hydrometrie/referentiel/stations?code_departement=${dep}&size=${sz}`;
         allHubEau.debitsStations = (await fetchViaProxy(url)).data || [];
 
-        // Débits V2 - valeurs (1 an)
+        // Débits - valeurs (OK)
         const dtFin = new Date(), dtDeb = new Date();
-        dtDeb.setFullYear(dtFin.getFullYear()-1);
+        dtDeb.setFullYear(dtFin.getFullYear() - 1);
         function fmt(d) { return d.toISOString().split('T')[0]; }
         url = `https://hubeau.eaufrance.fr/api/v2/hydrometrie/observations_tr?code_departement=${dep}&grandeur_hydro=Q&date_debut_obs_tr=${fmt(dtDeb)}&date_fin_obs_tr=${fmt(dtFin)}&size=10000`;
         allHubEau.debitsValues = (await fetchViaProxy(url)).data || [];
+
+        // Prélèvements (désactivé car API non disponible)
+        // url = `https://hubeau.eaufrance.fr/api/v1/prelevements/prelevements?code_departement=${dep}&size=${sz}`;
+        // allHubEau.prelevements = (await fetchViaProxy(url)).data || [];
 
         showLoading(false);
         afficherToutesCouchesSurCarte();
@@ -187,17 +186,16 @@
     document.getElementById("filterProximity").addEventListener("change", afficherToutesCouchesSurCarte);
     document.getElementById("filterRadius").addEventListener("input", afficherToutesCouchesSurCarte);
 
-    // --- Affichage carte couches HubEau avec filtres
+    // --- Affichage carte couches HubEau avec filtres --- CORRIGÉ GPT 2025
     function afficherToutesCouchesSurCarte() {
         const filterByProximity = document.getElementById("filterProximity").checked;
         const radius = parseFloat(document.getElementById("filterRadius").value) || 5;
 
         massesEauLayer.clearLayers();
         nappesLayer.clearLayers();
-        prelevementsLayer.clearLayers();
+        prelevementsLayer.clearLayers(); // Sans effet si pas de données
         debitsLayer.clearLayers();
 
-        // Fonctions utilitaires
         function estProcheDeStation(lat, lon) {
             for (const s of stationsExcel) {
                 const d = distanceKm(lat, lon, s.lat, s.lon);
@@ -211,7 +209,6 @@
             let lat=null, lon=null;
             if (masse.coord_y && masse.coord_x) { lat=masse.coord_y; lon=masse.coord_x; }
             else if (masse.geo_shape && masse.geo_shape.coordinates) {
-                // Prendre le premier point du polygone
                 const pt = masse.geo_shape.coordinates[0][0];
                 lon = pt[0]; lat = pt[1];
             }
@@ -238,15 +235,15 @@
             nappesLayer.addLayer(layer);
         }
 
-        // Prélèvements
-        for (const prel of allHubEau.prelevements) {
-            const lat=prel.latitude, lon=prel.longitude;
-            if (!lat || !lon) continue;
-            if (filterByProximity && !estProcheDeStation(lat,lon)) continue;
-            const layer = L.circleMarker([lat,lon], {color:"#e53935",radius:7,fillOpacity:0.7});
-            layer.bindPopup(genererPopupHtml(prel,"Prélèvement"));
-            prelevementsLayer.addLayer(layer);
-        }
+        // Prélèvements (désactivé - API non dispo)
+        // for (const prel of allHubEau.prelevements || []) {
+        //     const lat=prel.latitude, lon=prel.longitude;
+        //     if (!lat || !lon) continue;
+        //     if (filterByProximity && !estProcheDeStation(lat,lon)) continue;
+        //     const layer = L.circleMarker([lat,lon], {color:"#e53935",radius:7,fillOpacity:0.7});
+        //     layer.bindPopup(genererPopupHtml(prel,"Prélèvement"));
+        //     prelevementsLayer.addLayer(layer);
+        // }
 
         // Débits stations
         for (const st of allHubEau.debitsStations) {
@@ -289,7 +286,6 @@
 
     // --- Panneau latéral (évolution débit)
     function ouvrirPanneauDebit(codeStation) {
-        // Récupère infos station
         const st = allHubEau.debitsStations.find(s => s.code_station === codeStation);
         let html = `<h2>Station de Débit</h2>`;
         if (!st) { ouvrirPanneau("Station non trouvée"); return; }
@@ -301,17 +297,13 @@
         }
         html += `</table><div id="chartQ" style="height:250px;width:95%;margin-top:16px;"></div>`;
         ouvrirPanneau(html);
-
-        // Graphe débit
         setTimeout(()=>afficherCourbeDebit(codeStation), 150);
     }
 
-    // --- Afficher la courbe débit dans le panneau latéral
     function afficherCourbeDebit(codeStation){
         const values = allHubEau.debitsValues.filter(d => d.code_station === codeStation && d.resultat_obs_tr!=null);
-        // Trie par date
         values.sort((a,b)=>a.date_obs_tr.localeCompare(b.date_obs_tr));
-        const xData = values.map(v => v.date_obs_tr);
+              const xData = values.map(v => v.date_obs_tr);
         const yData = values.map(v => v.resultat_obs_tr);
         const chart = echarts.init(document.getElementById("chartQ"));
         chart.setOption({
@@ -325,8 +317,9 @@
 
     // --- Affichage automatique après tout chargement
     window.onload = function(){
-        // Possibilité de charger toutes les couches au démarrage (si besoin)
+        // Ici tu peux lancer des couches au démarrage si tu veux
     };
     </script>
 </body>
 </html>
+
